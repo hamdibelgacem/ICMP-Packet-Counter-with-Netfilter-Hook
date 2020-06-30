@@ -12,7 +12,7 @@ This repo contains the following folders:
 
 ### app/ : application source code
 
-- `ioctl_app.c` shows an example to access the driver and get the returned value
+- `ioctl_app.c` shows an example to access the driver and get the returned ICMP counter.
 - `Makefile` to build the application
 
 ### load_driver.sh
@@ -39,3 +39,8 @@ To remove the kernel module use:
 	$ ping localhost # Will generate some ICMP packet on the `lo` network interface
 
 and **Ctrl-C** to interrupt at any moment
+
+## TODO
+
+- Support IPv6.
+
