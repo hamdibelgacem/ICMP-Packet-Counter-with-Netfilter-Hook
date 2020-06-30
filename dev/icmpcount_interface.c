@@ -56,7 +56,7 @@ unsigned int hook_func(void *priv, struct sk_buff *skb, const struct nf_hook_sta
 	if (ip_header->protocol == IPPROTO_ICMP)
 	{
 		counter++;
-		printk(KERN_INFO "count  = %d \n", counter);
+		printk(KERN_DEBUG "ICMP_COUNTER: ICMP packet hooked");
 	}
 	
 	return NF_ACCEPT;
@@ -95,8 +95,8 @@ static int icmpcount_d_interface_setup_cdev(icmpcount_d_interface_dev * icmpcoun
 
 static void icmpcount_d_interface_exit(void)
 {
-	printk(KERN_INFO "Cleaning up icmp-packet-counting module.\n");
-	nf_unregister_hook(&nfho);
+	printk(KERN_INFO "Cleaning up icmpcount module.\n");
+	//nf_unregister_hook(&nfho);
 	dev_t devno = MKDEV(icmpcount_d_interface_major, icmpcount_d_interface_minor);
 
 	cdev_del(&icmpcount_d_interface.cdev);
@@ -133,15 +133,9 @@ static int icmpcount_d_interface_init(void)
 	}
 
 	printk(KERN_INFO "icmpcount_d_interface: module loaded\n");
-	
-	nfho.hook = hook_func;				// A pointer to a function that is called as soon as the hook is triggered.
-	nfho.hooknum = NF_INET_PRE_ROUTING; // NF_IP_PRE_ROUTING=0(capture ICMP Request.)  NF_IP_POST_ROUTING=4(capture ICMP reply.)
-	nfho.pf = PF_INET; 					// IPV4 packets
-	nfho.priority = NF_IP_PRI_FIRST; 	// Set to highest priority over all other hook functions
-	nf_register_hook(&nfho); 			// Register hook
 
-	printk(KERN_INFO "---------------------------------------\n");
-	printk(KERN_INFO "Loading icmp-packet-counting kernel module...\n");
+	//printk(KERN_INFO "---------------------------------------\n");
+	//printk(KERN_INFO "Loading icmpcount kernel module...\n");
 	return 0;
 }
 
@@ -171,6 +165,40 @@ int icmpcount_d_interface_release(struct inode *inode, struct file *filp)
 long icmpcount_d_interface_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 {
 	switch (cmd) {
+		case START_COUNT:
+			if (nfho.hook)
+			{
+				printk (KERN_ERR "ICMP_COUNTER: ICMP hook already running");
+				return -EBUSY;
+			}
+
+			printk(KERN_INFO "ICMP_COUNTER: Start counting");
+
+			/** Reset counter & init hook on start */
+			counter = 0;
+			
+			nfho.hook = hook_func;				// A pointer to a function that is called as soon as the hook is triggered.
+			nfho.hooknum = NF_INET_PRE_ROUTING; // NF_IP_PRE_ROUTING=0(capture ICMP Request.)  NF_IP_POST_ROUTING=4(capture ICMP reply.)
+			nfho.pf = PF_INET; 					// IPV4 packets
+			nfho.priority = NF_IP_PRI_FIRST; 	// Set to highest priority over all other hook functions
+			
+			if (nf_register_net_hook(&init_net, &nfho))
+			{
+				printk (KERN_ERR "ICMP_COUNTER: Cannot register netfilter");
+				return -EBUSY;
+			}
+			break;
+
+		case STOP_COUNT:
+			printk(KERN_INFO "ICMP_COUNTER: Stop counting");
+			if (nfho.hook)
+			{
+				printk(KERN_DEBUG "ICMP_COUNTER: Unregister netfilter hook on stop");
+				nf_unregister_net_hook(&init_net, &nfho);
+				nfho.hook = NULL;
+			}
+			break;
+		
 		case GET_COUNT:
 			printk(KERN_INFO "ICMP_COUNTER: Get counter value (%u)", counter);
 
