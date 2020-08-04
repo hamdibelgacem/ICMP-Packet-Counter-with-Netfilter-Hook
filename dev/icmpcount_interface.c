@@ -1,28 +1,20 @@
-#include <linux/cdev.h>
-#include <linux/fcntl.h>
-#include <linux/init.h>
-#include <linux/fs.h>
 #include <linux/kernel.h>
 #include <linux/module.h>
+
+#include <linux/cdev.h>
+#include <linux/fs.h>
+
 #include <linux/semaphore.h>
-#include <linux/slab.h>
-#include <linux/types.h>
 #include <asm/atomic.h>
-#include <asm/io.h>
-#include <asm/uaccess.h>
-#include <linux/delay.h>
-#include <linux/cdev.h>	
 
 #include <linux/netfilter.h>
 #include <linux/netfilter_ipv4.h>
-#include <linux/skbuff.h>
-#include <linux/udp.h>
-#include <linux/icmp.h>
 #include <linux/ip.h>
-#include <linux/inet.h>
 
 #include "icmpcount_dev.h"
 #include "icmpcount.h"
+
+#define CONTROL_DEVICE_NAME "icmpcounter_dev"
 
 MODULE_LICENSE("GPL");
 MODULE_AUTHOR("Belgacem Hamdi <belgacem.hamdi@ensi-uma.tn>");
@@ -33,27 +25,21 @@ MODULE_VERSION("0.1");
 int icmpcount_d_interface_major = 0;
 int icmpcount_d_interface_minor = 0;
 
-#define DEVICE_NAME "icmpcount_d"
-char* icmpcount_d_interface_name = DEVICE_NAME;
-
-static struct nf_hook_ops nfho;     // net filter hook option struct 
-struct sk_buff *sock_buff;          // socket buffer used in linux kernel
-struct iphdr *ip_header;            // ip header struct
-struct ethhdr *mac_header;          // mac header struct
+static struct nf_hook_ops nfho;     // net filter hook option struct
 
 icmpcount_d_interface_dev icmpcount_d_interface;
 
-unsigned int counter = 0;
+static unsigned int counter;
 
 unsigned int hook_func(void *priv, struct sk_buff *skb, const struct nf_hook_state *state)
 {
-	sock_buff = skb;
-	ip_header = (struct iphdr *)skb_network_header(sock_buff); //grab network header using accessor
-	mac_header = (struct ethhdr *)skb_mac_header(sock_buff);
-
-	if(!sock_buff) { return NF_DROP;}
+	struct iphdr *ip_header = NULL;	// ip header struct.
 	
-	if (ip_header->protocol == IPPROTO_ICMP)
+	if(!skb) { return NF_ACCEPT;}
+	
+	ip_header = (struct iphdr *)skb_network_header(skb); //grab network header using accessor
+	
+	if(ip_header->protocol == IPPROTO_ICMP)
 	{
 		counter++;
 		printk(KERN_DEBUG "ICMP_COUNTER: ICMP packet hooked");
@@ -71,10 +57,12 @@ struct file_operations icmpcount_d_interface_fops = {
 static int icmpcount_d_interface_dev_init(icmpcount_d_interface_dev * icmpcount_d_interface)
 {
 	int result = 0;
-	memset(icmpcount_d_interface, 0, sizeof(icmpcount_d_interface_dev));
-	atomic_set(&icmpcount_d_interface->available, 1);
-	sema_init(&icmpcount_d_interface->sem, 1);
-
+	if(icmpcount_d_interface != NULL)
+	{
+		memset(icmpcount_d_interface, 0, sizeof(icmpcount_d_interface_dev));
+		atomic_set(&icmpcount_d_interface->available, 1);
+		sema_init(&icmpcount_d_interface->sem, 1);
+	}
 	return result;
 }
 
@@ -85,17 +73,19 @@ static int icmpcount_d_interface_setup_cdev(icmpcount_d_interface_dev * icmpcoun
 	int error = 0;
 	dev_t devno = MKDEV(icmpcount_d_interface_major, icmpcount_d_interface_minor);
 
-	cdev_init(&icmpcount_d_interface->cdev, &icmpcount_d_interface_fops);
-	icmpcount_d_interface->cdev.owner = THIS_MODULE;
-	icmpcount_d_interface->cdev.ops = &icmpcount_d_interface_fops;
-	error = cdev_add(&icmpcount_d_interface->cdev, devno, 1);
-
+	if(icmpcount_d_interface != NULL)
+	{
+		cdev_init(&icmpcount_d_interface->cdev, &icmpcount_d_interface_fops);
+		icmpcount_d_interface->cdev.owner = THIS_MODULE;
+		icmpcount_d_interface->cdev.ops = &icmpcount_d_interface_fops;
+		error = cdev_add(&icmpcount_d_interface->cdev, devno, 1);
+	}
 	return error;
 }
 
 static void icmpcount_d_interface_exit(void)
 {
-	printk(KERN_INFO "Cleaning up icmpcount module.\n");
+	printk(KERN_INFO "ICMP_COUNTER : Cleaning up icmpcount module.\n");
 	//nf_unregister_hook(&nfho);
 	dev_t devno = MKDEV(icmpcount_d_interface_major, icmpcount_d_interface_minor);
 
@@ -103,7 +93,7 @@ static void icmpcount_d_interface_exit(void)
 	unregister_chrdev_region(devno, 1);
 	icmpcount_d_interface_dev_del(&icmpcount_d_interface);
 
-	printk(KERN_INFO "icmpcount_d_interface: module unloaded\n");
+	printk(KERN_INFO "ICMP_COUNTER: module unloaded\n");
 }
 
 static int icmpcount_d_interface_init(void)
@@ -113,29 +103,18 @@ static int icmpcount_d_interface_init(void)
 
 	icmpcount_d_interface_dev_init(&icmpcount_d_interface);
 
-
-	/* register char device
-	 * we will get the major number dynamically.
-	 */
-	result = alloc_chrdev_region(&devno, icmpcount_d_interface_minor, 1, icmpcount_d_interface_name);
+	// register char device, will get the major number dynamically.
+	result = alloc_chrdev_region(&devno, icmpcount_d_interface_minor, 1, CONTROL_DEVICE_NAME);
 	icmpcount_d_interface_major = MAJOR(devno);
 	if (result < 0) {
-		printk(KERN_WARNING "icmpcount_d_interface: can't get major number %d\n", icmpcount_d_interface_major);
+		printk(KERN_WARNING "ICMP_COUNTER: error %d adding icmpcount_d_interface\n", icmpcount_d_interface_major);
 		icmpcount_d_interface_exit();
 		return result;
 	}
 
 	result = icmpcount_d_interface_setup_cdev(&icmpcount_d_interface);
-	if (result < 0) {
-		printk(KERN_WARNING "icmpcount_d_interface: error %d adding icmpcount_d_interface", result);
-		icmpcount_d_interface_exit();
-		return result;
-	}
+	printk(KERN_INFO "ICMP_COUNTER: module loaded\n");
 
-	printk(KERN_INFO "icmpcount_d_interface: module loaded\n");
-
-	//printk(KERN_INFO "---------------------------------------\n");
-	//printk(KERN_INFO "Loading icmpcount kernel module...\n");
 	return 0;
 }
 
@@ -148,7 +127,7 @@ int icmpcount_d_interface_open(struct inode *inode, struct file *filp)
 
 	if (!atomic_dec_and_test(&icmpcount_d_interface->available)) {
 		atomic_inc(&icmpcount_d_interface->available);
-		printk(KERN_ALERT "open icmpcount_d_interface : the device has been opened by some other device, unable to open lock\n");
+		printk(KERN_ERR "ICMP_COUNTER : %s has been opened by some other device\n", CONTROL_DEVICE_NAME);
 		return -EBUSY;		// already open
 	}
 
@@ -159,6 +138,7 @@ int icmpcount_d_interface_release(struct inode *inode, struct file *filp)
 {
 	icmpcount_d_interface_dev *icmpcount_d_interface = filp->private_data;
 	atomic_inc(&icmpcount_d_interface->available);	/* release the device */
+	printk(KERN_INFO "ICMP_COUNTER: '%s' is close by user", CONTROL_DEVICE_NAME);
 	return 0;
 }
 

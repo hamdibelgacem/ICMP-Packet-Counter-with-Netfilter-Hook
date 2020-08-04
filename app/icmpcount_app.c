@@ -1,20 +1,20 @@
-#include <assert.h>
-#include <errno.h>
-#include <fcntl.h>
-#include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
+
+#include <stdbool.h>
+#include <errno.h>
+#include <fcntl.h>
 #include <string.h>
-#include <sys/mman.h>
+
 #include <sys/types.h>
 #include <unistd.h>
 #include <stdint.h>
-#include <sys/ioctl.h>
+#include <sys/ioctl.h>	//ioctl
 #include <signal.h>
 
 #include "../dev/icmpcount.h"
 
-#define ICMPCOUNT_DRIVER_NAME "/dev/icmpcount"
+#define ICMPCOUNT_DRIVER_NAME "/dev/icmpcounter"
 
 static bool running = true;
 
@@ -50,7 +50,6 @@ void close_driver(const char* driver_name, int fd_driver) {
     }
 }
 
-
 int main(void) {
 
 	int fd_icmpcount = open_driver(ICMPCOUNT_DRIVER_NAME);
@@ -85,5 +84,3 @@ int main(void) {
 
 	return EXIT_SUCCESS;
 }
-
-

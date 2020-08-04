@@ -1,4 +1,4 @@
-MODULE = icmpcount
+MODULE = icmpcounter
 
 ifneq ($(KERNELRELEASE),)
 # kbuild part of makefile

@@ -1,6 +1,6 @@
 #!/bin/bash
 
-device_name=icmpcount
+device_name=icmpcounter
 mode="444"
 
 echo "Loading module $device_name"
